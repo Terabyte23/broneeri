@@ -1,5 +1,9 @@
 import { useState, useEffect } from 'react';
+import { loadStripe } from '@stripe/stripe-js';
 import pb from './lib/pocketbase';
+
+// Initialize Stripe outside component render
+const stripePromise = loadStripe(import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY);
 
 export default function App() {
   const [user, setUser] = useState(pb.authStore.model);
@@ -91,6 +95,7 @@ export default function App() {
     setBookingSuccess('');
 
     try {
+      // 1. Create booking record in PocketBase
       const bookingData = {
         user: pb.authStore.model.id,
         service,
@@ -101,29 +106,49 @@ export default function App() {
       };
 
       const record = await pb.collection('bookings').create(bookingData);
-      setBookingSuccess('Broneering edukalt salvestatud PocketBase baasi!');
-      
+      setBookingSuccess('Broneering edukalt salvestatud!');
+
+      // 2. Request Stripe Checkout Session ID from PocketBase custom endpoint
+      const response = await fetch(`${pb.baseUrl}/api/create-checkout-session`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': pb.authStore.token,
+        },
+        body: JSON.stringify({
+          bookingId: record.id,
+          service: service,
+        }),
+      });
+
+      const session = await response.json();
+
+      if (!response.ok) {
+        throw new Error(session.message || 'Checkout session request failed.');
+      }
+
+      // 3. Redirect to Stripe Checkout using Public Key
+      const stripe = await stripePromise;
+      const { error } = await stripe.redirectToCheckout({
+        sessionId: session.id,
+      });
+
+      if (error) {
+        console.error('Stripe redirect error:', error);
+      }
+
       // Clear form
       setService('');
       setDate('');
       setCarModel('');
       setCarNumber('');
-      
-      // Refresh list
       fetchBookings();
-
-      // If Stripe payment link is configured
-      const stripePaymentLink = import.meta.env.VITE_STRIPE_PAYMENT_LINK;
-      if (stripePaymentLink && !stripePaymentLink.includes('example')) {
-        window.location.href = `${stripePaymentLink}?client_reference_id=${record.id}`;
-      }
     } catch (err) {
       alert('Viga broneeringu loomisel: ' + err.message);
     } finally {
       setBookingLoading(false);
     }
   };
-
 
   return (
     <div className="bg-slate-900 text-slate-100 min-h-screen font-sans antialiased">
@@ -174,7 +199,6 @@ export default function App() {
           <h2 className="text-2xl font-bold mb-6 border-b border-slate-700/80 pb-4">Aja broneerimine</h2>
 
           {!user ? (
-            /* Блок призыва к авторизации для гостей */
             <div className="bg-slate-900/90 border border-amber-500/30 rounded-xl p-8 text-center my-4">
               <div className="text-4xl mb-3">🔒</div>
               <h3 className="text-xl font-bold mb-2">Broneerimiseks logi sisse</h3>
@@ -197,7 +221,6 @@ export default function App() {
               </div>
             </div>
           ) : (
-            /* Форма бронирования доступная только авторизованным */
             <form onSubmit={handleBooking} className="space-y-5">
               <div>
                 <label className="block text-sm font-medium text-slate-300 mb-2">Teenus</label>
@@ -278,7 +301,7 @@ export default function App() {
                 disabled={bookingLoading}
                 className="w-full bg-amber-500 hover:bg-amber-400 disabled:opacity-50 text-slate-950 font-bold py-4 rounded-xl transition shadow-xl shadow-amber-500/20 mt-4 cursor-pointer"
               >
-                {bookingLoading ? 'Salvestamine...' : 'Broneeri ja mine maksma (Stripe)'}
+                {bookingLoading ? 'Suunamine maksmisele...' : 'Broneeri ja mine maksma (Stripe)'}
               </button>
             </form>
           )}
@@ -334,7 +357,6 @@ export default function App() {
           )}
         </div>
       </section>
-
 
       {/* Auth Modal Window */}
       {isAuthOpen && (
