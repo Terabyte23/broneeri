@@ -1,6 +1,7 @@
 import PocketBase from 'pocketbase';
 
-// Берем URL из ENV (никогда не хардкодим!)
-const pb = new PocketBase(import.meta.env.VITE_POCKETBASE_URL);
+// URL võetakse keskkonnamuutujast (Coolify / .env)
+const pbUrl = (import.meta.env.VITE_POCKETBASE_URL || window.location.origin).replace(/\/$/, '');
+const pb = new PocketBase(pbUrl);
 
-export default pb;
+export default pb;

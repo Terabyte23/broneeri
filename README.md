@@ -1,16 +1,107 @@
-# React + Vite
+﻿# AutoServicePro — SaaS Broneerimissüsteem
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+Veebipõhine autoteeninduse broneerimisplatvorm, mis on loodud projektinädala raames kasutades **React**, **Vite**, **PocketBase** ja **Coolify** platvormi.
 
-Currently, two official plugins are available:
+---
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+## 1. Projekti kirjeldus
+AutoServicePro võimaldab autoteeninduse klientidel:
+- Registreeruda ja sisse logida e-posti ning parooliga.
+- Valida sobiva teenuse (õlivahetus, diagnostika, pidurite remont jne), kuupäeva ja kellaaja.
+- Sisestada sõiduki andmed (mark, mudel, registrinumber).
+- Salvestada broneering turvaliselt PocketBase andmebaasi.
+- Suunata kasutaja Stripe makselingile broneeringu eest tasumiseks.
+- Vaadata oma isiklikke aktiivseid ja varasemaid broneeringuid ning nende staatust (*Minu broneeringud*).
 
-## React Compiler
+---
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+## 2. Arhitektuur ja tehniline valik
+- **Frontend:** React 19 + Vite + Tailwind CSS. Kiire, kergekaaluline ja kaasaegne kasutajaliides.
+- **Backend / Database:** PocketBase (isehostitav Go baasil SQLite andmebaas, REST API, Auth ja failihaldus ühes).
+- **PaaS / Hosting:** Coolify (isehostitav PaaS lahendus VPS serveril).
+- **Turvalisus:** PocketBase API Rules kontrollivad, et tavakasutaja näeb ja muudab ainult enda loodud broneeringuid (@request.auth.id != "" && user = @request.auth.id).
+- **Püsivus (Persistent Volumes):** PocketBase konteinerile on määratud püsiv ketas /pb/pb_data, mis tagab andmete säilimise taaskäivituste ja uuesti juurutamiste ajal.
 
-## Expanding the Oxlint configuration
+---
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and Oxlint's TypeScript related rules in your project.
+## 3. Lingid töötavatele teenustele
+- **Frontend rakendus:** [Coolify Frontend URL](http://b1uhomgy9jvqvani7dpxev4h.176.112.158.15.sslip.io) *(või määratud domeen)*
+- **PocketBase Admin UI:** http://b1uhomgy9jvqvani7dpxev4h.176.112.158.15.sslip.io/_/
+
+---
+
+## 4. PocketBase andmemudel (Collections) ja API reeglid
+
+### Kollektsioon users (PocketBase auth collection)
+- Sisseehitatud kasutajahaldus (email, password).
+
+### Kollektsioon ookings (Base collection)
+| Väli | Tüüp | Nõutud | Kirjeldus |
+| :--- | :--- | :--- | :--- |
+| user | Relation -> users | Jah | Viide broneeringu teinud kasutajale |
+| service | Text / Select | Jah | Teenuse kood või nimetus |
+| ooking_date | Text / Date | Jah | Valitud aeg (nt 2026-09-20 14:00:00) |
+| car_model | Text | Jah | Auto mark ja mudel (nt Audi A6) |
+| car_number | Text | Jah | Auto registreerimismärk |
+| status | Select | Jah | pending, confirmed, paid, cancelled |
+
+### API Reeglid (API Rules) kollektsioonile ookings:
+- **List / Search Rule:** @request.auth.id != "" && user = @request.auth.id *(Kasutaja näeb ainult oma broneeringuid!)*
+- **View Rule:** @request.auth.id != "" && user = @request.auth.id
+- **Create Rule:** @request.auth.id != "" *(Ainult sisse logitud kasutaja saab luua)*
+- **Update Rule:** @request.auth.id != "" && user = @request.auth.id
+- **Delete Rule:** @request.auth.id != "" && user = @request.auth.id
+
+---
+
+## 5. Juurutamine Coolify kaudu
+
+### PocketBase teenuse seadistamine Coolifys:
+1. Ava Coolify paneelis oma rakendus.
+2. Vali build packiks **Dockerfile**.
+3. **PORDID (Ports Exposes):** Määra 8090 (PocketBase vaikimisi port).
+4. **PERSISTENT VOLUME (Kriitiline!):**
+   - Suuna maht: pb_data -> /pb/pb_data
+   - *Ilma selleta kaovad SQLite andmed konteineri taaskäivitumisel!*
+5. Käivita (**Deploy**).
+6. Ava esmakordsel sisenemisel http://<sinu-url>/_/ ja loo esimene administraatori konto.
+
+### Frontendi juurutamine Coolifys:
+1. Lisa Coolifysse uus teenus GitHubi hoidlast https://github.com/Terabyte23/broneeri.git.
+2. Build pack: **Nixpacks** või **NodeJS / Static**.
+3. Build command: 
+pm run build
+4. Publish directory: dist
+5. Lisa keskkonnamuutuja:
+   `env
+   VITE_POCKETBASE_URL=http://<pocketbase-service-url>
+   `
+
+---
+
+## 6. Keskkonnamuutujad (Environment Variables)
+
+Frontend vajab järgmisi muutujaid (vt ka .env.example):
+`env
+VITE_POCKETBASE_URL=http://<sinu-pocketbase-url>
+VITE_STRIPE_PAYMENT_LINK=https://buy.stripe.com/test_...
+VITE_STRIPE_PUBLIC_KEY=pk_test_...
+`
+
+---
+
+## 7. Lokaalne käivitamine arenduseks
+
+`ash
+# 1. Klooni kood
+git clone https://github.com/Terabyte23/broneeri.git
+cd broneeri
+
+# 2. Käivita PocketBase Dockeriga lokaalselt
+docker-compose up -d
+
+# 3. Paigalda sõltuvused ja käivita React frontend
+npm install
+npm run dev
+`
+Rakendus avaneb aadressil http://localhost:5173.

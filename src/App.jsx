@@ -17,10 +17,39 @@ export default function App() {
   const [time, setTime] = useState('09:00');
   const [carModel, setCarModel] = useState('');
   const [carNumber, setCarNumber] = useState('');
+  const [myBookings, setMyBookings] = useState([]);
+  const [loadingBookings, setLoadingBookings] = useState(false);
+  const [bookingSuccess, setBookingSuccess] = useState('');
+  const [bookingLoading, setBookingLoading] = useState(false);
+
+  const fetchBookings = async () => {
+    if (!pb.authStore.isValid) return;
+    try {
+      setLoadingBookings(true);
+      const records = await pb.collection('bookings').getFullList({
+        sort: '-created',
+      });
+      setMyBookings(records);
+    } catch (err) {
+      console.error('Broneeringute laadimine ebaõnnestus:', err);
+    } finally {
+      setLoadingBookings(false);
+    }
+  };
 
   useEffect(() => {
+    setUser(pb.authStore.model);
+    if (pb.authStore.isValid) {
+      fetchBookings();
+    }
     return pb.authStore.onChange(() => {
-      setUser(pb.authStore.model);
+      const current = pb.authStore.model;
+      setUser(current);
+      if (current) {
+        fetchBookings();
+      } else {
+        setMyBookings([]);
+      }
     });
   }, []);
 
@@ -39,6 +68,7 @@ export default function App() {
       setIsAuthOpen(false);
       setEmail('');
       setPassword('');
+      fetchBookings();
     } catch (err) {
       setAuthError('Viga autoriseerimisel: ' + err.message);
     }
@@ -46,6 +76,8 @@ export default function App() {
 
   const handleLogout = () => {
     pb.authStore.clear();
+    setUser(null);
+    setMyBookings([]);
   };
 
   const handleBooking = async (e) => {
@@ -54,6 +86,9 @@ export default function App() {
       setIsAuthOpen(true);
       return;
     }
+
+    setBookingLoading(true);
+    setBookingSuccess('');
 
     try {
       const bookingData = {
@@ -66,13 +101,29 @@ export default function App() {
       };
 
       const record = await pb.collection('bookings').create(bookingData);
+      setBookingSuccess('Broneering edukalt salvestatud PocketBase baasi!');
       
-      // Stripe Test Payment Link
-      window.location.href = `https://buy.stripe.com/test_link_example?client_reference_id=${record.id}`;
+      // Clear form
+      setService('');
+      setDate('');
+      setCarModel('');
+      setCarNumber('');
+      
+      // Refresh list
+      fetchBookings();
+
+      // If Stripe payment link is configured
+      const stripePaymentLink = import.meta.env.VITE_STRIPE_PAYMENT_LINK;
+      if (stripePaymentLink && !stripePaymentLink.includes('example')) {
+        window.location.href = `${stripePaymentLink}?client_reference_id=${record.id}`;
+      }
     } catch (err) {
       alert('Viga broneeringu loomisel: ' + err.message);
+    } finally {
+      setBookingLoading(false);
     }
   };
+
 
   return (
     <div className="bg-slate-900 text-slate-100 min-h-screen font-sans antialiased">
@@ -216,13 +267,74 @@ export default function App() {
                 </div>
               </div>
 
-              <button type="submit" className="w-full bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold py-4 rounded-xl transition shadow-xl shadow-amber-500/20 mt-4">
-                Maksma (Stripe)
+              {bookingSuccess && (
+                <div className="bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-sm p-4 rounded-xl mb-4">
+                  ✓ {bookingSuccess}
+                </div>
+              )}
+
+              <button 
+                type="submit" 
+                disabled={bookingLoading}
+                className="w-full bg-amber-500 hover:bg-amber-400 disabled:opacity-50 text-slate-950 font-bold py-4 rounded-xl transition shadow-xl shadow-amber-500/20 mt-4 cursor-pointer"
+              >
+                {bookingLoading ? 'Salvestamine...' : 'Broneeri ja mine maksma (Stripe)'}
               </button>
             </form>
           )}
+
+          {/* Kasutaja oma broneeringud */}
+          {user && (
+            <div className="mt-8 pt-6 border-t border-slate-700/60">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-bold text-slate-200">Minu broneeringud</h3>
+                <button 
+                  onClick={fetchBookings} 
+                  type="button"
+                  className="text-xs text-amber-500 hover:underline cursor-pointer"
+                >
+                  Värskenda
+                </button>
+              </div>
+
+              {loadingBookings ? (
+                <p className="text-sm text-slate-400">Laadimine...</p>
+              ) : myBookings.length === 0 ? (
+                <p className="text-sm text-slate-400">Teil pole veel aktiivseid broneeringuid.</p>
+              ) : (
+                <div className="space-y-3">
+                  {myBookings.map((b) => (
+                    <div key={b.id} className="bg-slate-900/80 border border-slate-700/60 rounded-xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                      <div>
+                        <div className="font-semibold text-slate-200">
+                          {b.service === 'diag' && 'Arvutidiagnostika'}
+                          {b.service === 'oil' && 'Õli ja filtrite vahetus'}
+                          {b.service === 'brakes' && 'Pidurite hooldus'}
+                          {b.service === 'full' && 'Täielik tehnohooldus'}
+                          {!['diag', 'oil', 'brakes', 'full'].includes(b.service) && b.service}
+                        </div>
+                        <div className="text-xs text-slate-400">
+                          {b.car_model} ({b.car_number}) • {b.booking_date}
+                        </div>
+                      </div>
+                      <div>
+                        <span className={`text-xs px-2.5 py-1 rounded-full font-medium ${
+                          b.status === 'confirmed' || b.status === 'paid'
+                            ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+                            : 'bg-amber-500/20 text-amber-400 border border-amber-500/30'
+                        }`}>
+                          {b.status === 'pending' ? 'Ootel / Maksmata' : b.status}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </section>
+
 
       {/* Auth Modal Window */}
       {isAuthOpen && (
