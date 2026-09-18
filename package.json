@@ -24,6 +24,7 @@
     "autoprefixer": "^10.6.1",
     "oxlint": "^1.81.0",
     "postcss": "^8.5.28",
+    "rolldown": "^1.2.9",
     "tailwindcss": "^4.3.3",
     "vite": "^5.4.11"
   }
