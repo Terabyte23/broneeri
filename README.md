@@ -1,4 +1,4 @@
-﻿# AutoServicePro — SaaS Broneerimissüsteem
+# AutoServicePro — SaaS Broneerimissüsteem
 
 Veebipõhine autoteeninduse broneerimisplatvorm, mis on loodud projektinädala raames kasutades **React**, **Vite**, **PocketBase** ja **Coolify** platvormi.
 
@@ -79,14 +79,30 @@ pm run build
 
 ---
 
-## 6. Keskkonnamuutujad (Environment Variables)
+## 6. Keskkonnamuutujad (Environment Variables) ja Stripe Makselahendus
 
-Frontend vajab järgmisi muutujaid (vt ka .env.example):
-`env
-VITE_POCKETBASE_URL=http://<sinu-pocketbase-url>
+Frontend vajab järgmisi muutujaid (vt ka `.env.example`):
+```env
+# PocketBase URL
+VITE_POCKETBASE_URL=http://127.0.0.1:8090
+
+# Stripe Makselink (buy.stripe.com)
 VITE_STRIPE_PAYMENT_LINK=https://buy.stripe.com/test_...
+
+# Stripe avalik võti (valikuline)
 VITE_STRIPE_PUBLIC_KEY=pk_test_...
-`
+```
+
+### Kuidas Stripe makselahendus töötab:
+1. **Stripe Payment Link (Tootmises ja testis):**
+   - Stripe Dashboardis (`test mode`) looge toode ja sellele **Payment Link** (`buy.stripe.com/test_...`).
+   - Seadistage Stripe'is pärast makset suunamise aadressiks (*Confirmation page -> Redirect customers to your website*):
+     `http://localhost:5173/?payment=success&booking_id={CHECKOUT_SESSION_ID}` (või teie Coolify domeen).
+   - Rakendus võtab tagasisuunamisel automaatselt vastu parameetri `?payment=success`, märgib broneeringu staatuseks `paid` ning kuvab kliendile eduka makse kinnitusakna.
+2. **Sisseehitatud Stripe Checkout Testrežiim:**
+   - Kui `VITE_STRIPE_PAYMENT_LINK` on tühi või testrežiimis, avab rakendus broneerimisel otse interaktiivse Stripe makseakna, kus saab testkaardiga (`4242 4242 4242 4242`) simuleerida makset ning broneering märgitakse PocketBase'is staatusele `paid`.
+3. **Tasumata broneeringute maksmine:**
+   - Jaotises *Minu broneeringud* on iga ootel (`pending`) broneeringu juures nupp **Maksa Stripe'iga**, mis võimaldab kliendil mugavalt tasuda ka hiljem.
 
 ---
 
